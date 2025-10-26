@@ -1,0 +1,9 @@
+{
+    "hw_ref": "52237354",
+    "sw_ref": "52225345",
+    "cal_ref": "52245379",
+    "hw_patterns": "ELT_NO=Y  AND G_SX=Y AND 2J4=N",
+    "sw_patterns": "ELT_NO=Y AND 2J4= N",
+    "cal_patterns": "ELT_MHEV = Y AND TT_EAWD = Y",
+    "last_index": 290
+}

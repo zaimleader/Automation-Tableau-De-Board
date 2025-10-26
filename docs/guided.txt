@@ -1,0 +1,13 @@
+1- python -m venv venv
+2- .\venv\Scripts\activate
+3- pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+4- pip install email
+5- pip install pandas openpyxl
+
+python.exe -m pip install --upgrade pip
+
+1- python -m venv venv
+2- venv\Scripts\activate
+3- pip freeze > requirements.txt
+4- pip install -r requirements.txt
+5- deactivate
