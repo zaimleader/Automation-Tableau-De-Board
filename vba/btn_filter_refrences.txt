@@ -1,0 +1,130 @@
+Option Explicit
+
+' === Function: Check if a process is running ===
+Function IsProcessRunning(processName As String) As Boolean
+    Dim objWMIService As Object
+    Dim colProcesses As Object
+    
+    Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")
+    Set colProcesses = objWMIService.ExecQuery("Select * from Win32_Process Where Name = '" & processName & "'")
+    
+    IsProcessRunning = (colProcesses.Count > 0)
+End Function
+
+' === Button: 📊 Comparaison ===
+Sub Button_Comparaison()
+
+    Dim pythonPath As String
+    Dim scriptPath As String
+    Dim dataPath As String
+    Dim filterPath As String
+    Dim command As String
+    Dim shellResult As Long
+    Dim waitSeconds As Integer
+    Dim column_name As String
+    Dim reference_value As String
+    Dim sheet_name As String
+    
+    Dim jsonText As String
+    Dim dataJson As Object
+    Dim filterJson As Object
+    
+    Dim ws As Worksheet
+    Dim last_index As Long
+    Dim project_name As String
+    Dim organe_name As String
+    Dim designation As String
+    Dim multivalore As String
+    Dim reversed_multivalore As String
+    Dim cel_color As Boolean
+    Dim pa_usecase As String
+    Dim dataFile As Integer
+
+    ' === File paths ===
+    pythonPath = "C:\Users\pc\AppData\Local\Programs\Python\Python310\python.exe"
+    scriptPath = "C:\Users\pc\Desktop\Documents\Programming\Automation Tableau De Board\main\src\comparaison.py"
+    dataPath = "C:\Users\pc\Desktop\Documents\Programming\Automation Tableau De Board\main\result\result.json"
+    filterPath = "C:\Users\pc\Desktop\Documents\Programming\Automation Tableau De Board\main\result\filter.json"
+
+    ' === Get user input ===
+    column_name = InputBox("Enter the column name:", "Column Name")
+    If column_name = "" Then Exit Sub
+
+    reference_value = InputBox("Enter the reference value:", "Reference Value")
+    If reference_value = "" Then Exit Sub
+
+    sheet_name = InputBox("Enter the sheet name:", "Sheet Name")
+    If sheet_name = "" Then Exit Sub
+
+    ' === Step 1: Run Python Script ===
+    MsgBox "Retrieving comparison data... Please wait.", vbInformation
+
+    command = pythonPath & " " & """" & scriptPath & """" & " """ & column_name & """ """ & reference_value & """ """ & sheet_name & """"
+    shellResult = Shell(command, vbNormalFocus)
+
+    ' Wait until Python finishes running
+    Do While IsProcessRunning("python.exe")
+        Application.Wait (Now + TimeValue("0:00:3"))
+    Loop
+
+    waitSeconds = 5
+    Application.Wait (Now + TimeValue("0:00:" & waitSeconds))
+
+    ' === Step 2: Load JSON Data ===
+    ' --- Load result.json ---
+    dataFile = FreeFile
+    Open dataPath For Input As #dataFile
+    jsonText = Input$(LOF(dataFile), dataFile)
+    Close #dataFile
+    Set dataJson = JsonConverter.ParseJson(jsonText)
+
+    ' --- Load filter.json ---
+    dataFile = FreeFile
+    Open filterPath For Input As #dataFile
+    jsonText = Input$(LOF(dataFile), dataFile)
+    Close #dataFile
+    Set filterJson = JsonConverter.ParseJson(jsonText)
+
+    ' === Extract JSON values ===
+    project_name = dataJson("project_name")
+    organe_name = dataJson("organe_name")
+    designation = dataJson("designation")
+    last_index = CLng(dataJson("last_index"))
+
+    multivalore = filterJson("multivalore")
+    reversed_multivalore = filterJson("multivalore") ' can be adjusted if Python saves reversed separately
+    pa_usecase = filterJson("pa_usecase")
+    cel_color = filterJson("cel_color")
+
+    ' === Step 3: Filter the main sheet ===
+    Set ws = ThisWorkbook.Sheets("TdeB_OFFI")
+    ws.AutoFilterMode = False
+
+    ' Assuming headers are in row 1
+    ws.Rows(1).AutoFilter Field:=2, Criteria1:=project_name     ' Column B: Project
+    ws.Rows(1).AutoFilter Field:=3, Criteria1:=organe_name      ' Column C: Organe
+    ws.Rows(1).AutoFilter Field:=6, Criteria1:=designation      ' Column F: Designation
+
+    ' === Step 4: Write results ===
+    ' Column AE (31): multivalore
+    ' Column AF (32): reversed_multivalore
+    ' Column AG (33): cel_color
+    
+    ws.Cells(last_index + 1, 31).Value = multivalore
+    ws.Cells(last_index + 1, 32).Value = reversed_multivalore
+    ws.Cells(last_index + 1, 33).Value = cel_color
+
+    ' === Step 5: Color the cell ===
+    If cel_color = True Then
+        ws.Cells(last_index + 1, 31).Interior.Color = RGB(163, 204, 218)  ' #A3CCDA
+    Else
+        ws.Cells(last_index + 1, 31).Interior.Color = RGB(230, 39, 39)    ' #E62727
+    End If
+
+    ' === Step 6: Save workbook ===
+    ws.AutoFilterMode = False
+    ThisWorkbook.Save
+
+    MsgBox "✅ Comparison completed successfully.", vbInformation
+
+End Sub

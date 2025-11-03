@@ -13,13 +13,19 @@ import pandas as pd  # ✅ NEW — for Excel operations
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
+# === File paths ===
+main_path = "C:\\Users\\pc\\Desktop\\Documents\\Programming\\Automation Tableau De Board"
+excel_name = "TDB_CP_BPILOT_V4 (12).xlsm"
+sheet_name = "TdeB_OFFI"
+
+
 # ==========================================================
 # Authenticate Gmail API
 # ==========================================================
 def authenticate_gmail():
     creds = None
-    token_path = r"C:\Users\pc\Desktop\Documents\Programming\Automation Excel\main\dist\token.pickle"
-    credentials_path = r"C:\Users\pc\Desktop\Documents\Programming\Automation Excel\main\dist\credentials.json"
+    token_path = f"{main_path}\\main\\dist\\token.pickle"
+    credentials_path = f"{main_path}\\main\\dist\\credentials.json"
 
     if os.path.exists(token_path):
         with open(token_path, 'rb') as token:
@@ -39,82 +45,43 @@ def authenticate_gmail():
 # ==========================================================
 # Read Excel and get Designation value
 # ==========================================================
-def get_designation_from_excel(project_name, organe_name):
+def get_designation_from_excel(project_name, organe_name, designation):
     """
     Filters Excel file by 'Project' and 'Organe' columns, 
     then retrieves the last 'Designation' value from the result.
     """
-    excel_path = r"C:\Users\pc\Desktop\Documents\Programming\Automation Excel\excel\TDB_CP_BPILOT_V4 (12).xlsm"
-    sheet_name = "TdeB_OFFI"
+    excel_path = f"{main_path}\\excel\\{excel_name}"
 
     # Load Excel sheet
     df = pd.read_excel(excel_path, header=None, sheet_name=sheet_name, engine='openpyxl')
 
-    # Ensure column names are stripped and consistent
-    # df.columns = df.columns.str.strip()
-
-    column_names_index = df.columns
-    # print(column_names_index)
-
-    # print(df[1])
-
     # Apply filtering 
     # index of Projet culomn is 1
     # index of Organe culomn is 2
+    # index of Designation culomn is 5
     filtered_df = df[
         (df[1].astype(str).str.strip() == project_name.strip()) &
-        (df[2].astype(str).str.strip() == organe_name.strip())
+        (df[2].astype(str).str.strip() == organe_name.strip()) &
+        (df[5].astype(str).str.strip() == designation.strip())
     ]
 
     if filtered_df.empty:
-        print(f"No rows found for Project={project_name} and Organe={organe_name}")
+        print(f"No rows found for Project={project_name} Organe={organe_name} and designation={designation}")
         return None
 
     # Get the last row index and the corresponding Designation value
     # index of Designation culomn is 1
     last_row = filtered_df.tail(1)
     last_index = filtered_df.index[-1]
-    designation_value = last_row[5].values[0]
+    # designation_value = last_row[5].values[0]
 
     print(f"last_index: {last_index}")
 
     # print(last_row)
 
-    print(f"✅ Designation found: {designation_value}")
-    return designation_value, last_index
+    # print(f"✅ Designation found: {designation_value}")
+    return last_index
 
-def update_excel(filtered_df, last_index):
-    # --- Step 2: Load values from result.json ---
-    with open(r"C:\Users\pc\Desktop\Documents\Programming\Automation Excel\main\dist\result.json", "r", encoding="utf-8") as f:
-        result_data = json.load(f)
-
-    cal_ref = result_data.get("cal_ref")
-    sw_ref = result_data.get("sw_ref")
-    hw_ref = result_data.get("hw_ref")
-
-    # --- Step 3: Fill the Excel cells ---
-    # Reference NFC 'FIAT'  → index - 1
-    filtered_df.loc[last_index - 1, "Reference NFC 'FIAT'"] = cal_ref
-
-    # SW' → index - 1
-    filtered_df.loc[last_index - 1, "SW'"] = sw_ref
-
-    # HW' → index - 2
-    filtered_df.loc[last_index - 2, "HW'"] = hw_ref
-
-    # --- Step 4: Save changes back to the Excel file ---
-    excel_path = r"C:\Users\pc\Desktop\Documents\Programming\Automation Excel\main\dist\your_excel_file.xlsx"
-
-    # Load the original full Excel (not only the filtered part)
-    df = pd.read_excel(excel_path)
-
-    # Update the corresponding rows in the full DataFrame
-    for idx, row in filtered_df.iterrows():
-        df.loc[idx] = row
-
-    # Save the updated Excel file
-    df.to_excel(excel_path, index=False)
-    print("✅ Excel updated successfully.")
 # ==========================================================
 # Fetch email content
 # ==========================================================
@@ -172,16 +139,16 @@ if __name__ == "__main__":
 
     project_name = sys.argv[1]
     organe_name = sys.argv[2]
+    designation = sys.argv[3]
 
     # Step 1: Authenticate Gmail
     service = authenticate_gmail()
 
     # Step 2: Get designation and Excel data
-    designation_value, last_index = get_designation_from_excel(project_name, organe_name)
-    print(f"✅ Found designation: {designation_value}")
+    last_index = get_designation_from_excel(project_name, organe_name, designation)
 
     # Step 3: Search Gmail
-    query = f'subject:("{project_name}_{organe_name}_{designation_value}")'
+    query = f'subject:("{project_name}_{organe_name}_{designation}")'
     email_body = get_email(service, query)
 
     if not email_body:
@@ -190,37 +157,10 @@ if __name__ == "__main__":
     # Step 4: Extract values
     extracted = extract_values(email_body, last_index)
 
-    # Step 5: Save values to result.json
-    result_path = r"C:\Users\pc\Desktop\Documents\Programming\Automation Excel\main\result\result.json"
+    # Step 5: Save values to data.json
+    result_path = f"{main_path}\\main\\result\\data.json"
+    
     with open(result_path, "w", encoding="utf-8") as f:
         json.dump(extracted, f, indent=4)
 
     print(f"💾 Extracted values saved: {extracted}")
-
-    # Step 6: Fill Excel fields based on extracted values
-    # cal_ref = extracted.get("cal_ref")
-    # sw_ref = extracted.get("sw_ref")
-    # hw_ref = extracted.get("hw_ref")
-
-    # Column index references (0-based indexing)
-    # col_ref_nfc = 15  # "Reference NFC 'FIAT'"
-    # col_hw_fiat = 16  # "HW 'FIAT'"
-    # col_sw_fiat = 17  # "SW 'FIAT'"
-
-    # try:
-    #     # Update the Excel values using .iloc[row_index, col_index]
-    #     df.iloc[last_index - 1, col_ref_nfc] = cal_ref
-    #     df.iloc[last_index - 1, col_sw_fiat] = sw_ref
-    #     df.iloc[last_index - 2, col_hw_fiat] = hw_ref
-
-    #     print("✅ Excel cells updated successfully:")
-    #     print(f"  Reference NFC 'FIAT' (index {col_ref_nfc}) = {cal_ref}")
-    #     print(f"  SW 'FIAT' (index {col_sw_fiat}) = {sw_ref}")
-    #     print(f"  HW 'FIAT' (index {col_hw_fiat}) = {hw_ref}")
-
-    # except Exception as e:
-    #     print(f"⚠️ Error updating Excel cells: {e}")
-
-    # # Step 7: Save Excel
-    # df.to_excel(excel_path, index=False, engine='openpyxl')
-    print("✅ Excel file saved successfully.")

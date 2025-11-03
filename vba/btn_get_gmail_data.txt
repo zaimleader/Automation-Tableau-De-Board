@@ -1,0 +1,164 @@
+' ==========================================================
+'   Button Macro: Get Gmail Data & Update Excel
+' ==========================================================
+Sub Button_GetGmailDataAndUpdate()
+
+    Dim pythonPath As String
+    Dim scriptPath As String
+    Dim resultPath As String
+    Dim projectName As String
+    Dim organeName As String
+    Dim command As String
+    Dim jsonText As String
+    Dim json As Object
+    Dim fso As Object
+    Dim file As Object
+    Dim ws As Worksheet
+    Dim lastIndex As Long
+    Dim cal_ref As String, sw_ref As String, hw_ref As String
+    Dim projCol As Long, orgCol As Long
+    Dim refCol As Long, swCol As Long, hwCol As Long
+    Dim waitSeconds As Integer
+    Dim visibleRows As Range
+    Dim wsh As Object
+    Dim shellResult As Double
+
+    On Error GoTo ErrorHandler
+
+    ' === CONFIGURATION ===
+    pythonPath = "C:\Users\pc\AppData\Local\Programs\Python\Python310\python.exe"
+    scriptPath = "C:\\Users\\pc\\Desktop\\Documents\\Programming\\Automation Tableau De Board\main\src\get_gmail_data.py"
+    resultPath = "C:\\Users\\pc\\Desktop\\Documents\\Programming\\Automation Tableau De Board\main\result\data.json"
+
+    Set ws = ThisWorkbook.Sheets("TdeB_OFFI") ' <-- Change if your sheet has a different name
+    ws.Activate
+
+    ' === Fixed columns (known indexes) ===
+    projCol = 2    ' Column B: Project
+    orgCol = 3       ' Column C: Organe
+    refCol = 16    ' Column P: Reference NFC 'FIAT'
+    hwCol = 17     ' Column Q: HW 'FIAT'
+    swCol = 18       ' Column R: SW 'FIAT'
+    paCol = 30     ' Column AD: SW 'FIAT'
+
+    ' === User input ===
+    projectName = InputBox("Enter the Project name:", "Project Filter")
+    If projectName = "" Then Exit Sub
+
+    organeName = InputBox("Enter the Organe name:", "Organe Filter")
+    If organeName = "" Then Exit Sub
+
+
+    designation = InputBox("Enter the Designation:", "Designation Filter")
+    If designation = "" Then Exit Sub
+    
+    ' === Step 1: Run Python script ===
+    MsgBox "Retrieving Gmail data... Please wait.", vbInformation
+    
+    command = """" & pythonPath & """ """ & scriptPath & """ """ & projectName & """ """ & organeName & """ """ & designation & """"
+    
+    ' Use Shell with a wait loop (less reliable but avoids WScript.Shell)
+    shellResult = Shell(command, vbNormalFocus)
+    
+    ' Wait for the process to finish (check if python.exe is still running)
+    Do While IsProcessRunning("python.exe")
+        Application.Wait (Now + TimeValue("0:00:10"))  ' Wait 1 second
+    Loop
+
+    ' Wait for Python to finish
+    waitSeconds = 10
+    Application.Wait (Now + TimeValue("0:00:" & waitSeconds))
+
+    ' === Step 2: Load result.json (only for refs) ===
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(resultPath) Then
+        MsgBox "? result.json not found. Ensure the Python script ran successfully.", vbCritical
+        Exit Sub
+    End If
+
+    Set file = fso.OpenTextFile(resultPath, 1)
+    jsonText = file.ReadAll
+    file.Close
+    
+    ' Check if JSON is empty or invalid
+    If Trim(jsonText) = "" Then
+        MsgBox "? result.json is empty. The Python script may have failed.", vbCritical
+        Exit Sub
+    End If
+
+    ' Requires JsonConverter.bas (from VBA JSON Library)
+    Set json = JsonConverter.ParseJson(jsonText)
+
+    cal_ref = json("cal_ref")
+    sw_ref = json("sw_ref")
+    hw_ref = json("hw_ref")
+    
+    lastIndex = json("last_index")
+    
+    cal_pat = json("cal_patterns")
+    sw_pat = json("sw_patterns")
+    hw_pat = json("hw_patterns")
+    
+    ' === Step 3: Define table range and apply filters ===
+    ' === Find last row in column B (Project column) ===
+    lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
+    
+    ' === Define table range (from headers to last row) ===
+    Set tblRange = ws.Range("B1:R" & lastRow)
+    
+    ' === Clear any existing filters ===
+    If ws.AutoFilterMode Then ws.AutoFilterMode = False
+    
+    ' === Apply filters safely ===
+    On Error Resume Next
+    tblRange.AutoFilter Field:=1, Criteria1:=projectName   ' Column B = Project
+    tblRange.AutoFilter Field:=2, Criteria1:=organeName    ' Column C = Organe
+    On Error GoTo 0
+    
+    If ws.AutoFilterMode = False Then
+        MsgBox "?? Could not apply filter. Please check column headers and data range.", vbExclamation
+        Exit Sub
+    End If
+
+    
+    ' Get the row number of the last visible row in Column B
+    
+    ' Validate lastIndex (must be at least 4 to avoid invalid cell writes)
+    If lastIndex < 4 Then
+        MsgBox "?? Invalid lastIndex (" & lastIndex & ") after filtering. Ensure filtered data has enough rows.", vbCritical
+        ws.AutoFilterMode = False
+        Exit Sub
+    End If
+
+    ' === Step 5: Write data into Excel ===
+    ws.Cells(lastIndex, refCol).Value = cal_ref      ' Row lastIndex,     Column P
+    ws.Cells(lastIndex - 1, swCol).Value = sw_ref    ' Row lastIndex - 1, Column R
+    ws.Cells(lastIndex - 2, hwCol).Value = hw_ref    ' Row lastIndex - 2, Column Q
+    
+    ws.Cells(lastIndex, paCol).Value = cal_pat       ' Row lastIndex,     Column AD
+    ws.Cells(lastIndex - 1, paCol).Value = sw_pat    ' Row lastIndex - 1, Column AD
+    ws.Cells(lastIndex - 2, paCol).Value = hw_pat    ' Row lastIndex - 2, Column AD
+    
+    ' === Step 6: Save and clean up ===
+    ThisWorkbook.Save
+    ' ws.AutoFilterMode = False
+
+    MsgBox "? Gmail data successfully retrieved and Excel updated!", vbInformation
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "?? Error: " & Err.Description, vbCritical
+    ws.AutoFilterMode = False  ' Ensure filters are cleared on error
+
+End Sub
+
+Function IsProcessRunning(processName As String) As Boolean
+    Dim objWMIService As Object
+    Dim colProcesses As Object
+    Dim objProcess As Object
+    
+    Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")
+    Set colProcesses = objWMIService.ExecQuery("Select * from Win32_Process Where Name = '" & processName & "'")
+    
+    IsProcessRunning = (colProcesses.Count > 0)
+End Function
